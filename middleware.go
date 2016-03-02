@@ -28,6 +28,10 @@ func NewPrometheus(subsystem string) *Prometheus {
 	return p
 }
 
+func Middleware(subsystem string) gin.HandlerFunc {
+	return NewPrometheus(subsystem).handlerFunc()
+}
+
 func (p *Prometheus) registerMetrics(subsystem string) {
 	p.reqCnt = prometheus.MustRegisterOrGet(prometheus.NewCounterVec(
 		prometheus.CounterOpts{
