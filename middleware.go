@@ -3,6 +3,7 @@ package ginprometheus
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -45,8 +46,8 @@ func (p *Prometheus) registerMetrics(subsystem string) {
 	p.reqDur = prometheus.MustRegisterOrGet(prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Subsystem: subsystem,
-			Name:      "request_duration_microseconds",
-			Help:      "The HTTP request latencies in microseconds.",
+			Name:      "request_duration_seconds",
+			Help:      "The HTTP request latencies in seconds.",
 		},
 	)).(prometheus.Summary)
 
@@ -81,18 +82,26 @@ func (p *Prometheus) handlerFunc() gin.HandlerFunc {
 
 		start := time.Now()
 
-		reqSz := make(chan float64)
-		go computeRequestSize(c.Request, reqSz)
+		reqSz := make(chan int)
+		urlLen := 0
+		if c.Request.URL != nil {
+			urlLen = len(c.Request.URL.String())
+		}
+		go computeApproximateRequestSize(c.Request, reqSz, urlLen)
 
 		c.Next()
 
 		status := strconv.Itoa(c.Writer.Status())
-		elapsed := float64(time.Since(start)) / float64(time.Microsecond)
+		method := strings.ToLower(c.Request.Method)
+		elapsed := time.Since(start).Seconds()
 		resSz := float64(c.Writer.Size())
 
+		splitName := strings.Split(c.HandlerName(), ".")
+		handlerName := strings.TrimPrefix(splitName[len(splitName)-1], "Handle")
+
 		p.reqDur.Observe(elapsed)
-		p.reqCnt.WithLabelValues(status, c.Request.Method, c.HandlerName()).Inc()
-		p.reqSz.Observe(<-reqSz)
+		p.reqCnt.WithLabelValues(status, method, handlerName).Inc()
+		p.reqSz.Observe(float64(<-reqSz))
 		p.resSz.Observe(resSz)
 	}
 }
@@ -104,19 +113,21 @@ func prometheusHandler() gin.HandlerFunc {
 	}
 }
 
-func computeRequestSize(r *http.Request, out chan float64) {
-	c := &counter{}
-	r.Write(c)
-	out <- float64(c.size)
-}
+func computeApproximateRequestSize(r *http.Request, out chan int, s int) {
+	s += len(r.Method)
+	s += len(r.Proto)
+	for name, values := range r.Header {
+		s += len(name)
+		for _, value := range values {
+			s += len(value)
+		}
+	}
+	s += len(r.Host)
 
-type counter struct {
-	size int
-}
+	// N.B. r.Form and r.MultipartForm are assumed to be included in r.URL.
 
-func (c *counter) Write(p []byte) (n int, err error) {
-	l := len(p)
-	c.size += l
-
-	return l, nil
+	if r.ContentLength != -1 {
+		s += int(r.ContentLength)
+	}
+	out <- s
 }
