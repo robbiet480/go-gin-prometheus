@@ -34,38 +34,42 @@ func Middleware(subsystem string) gin.HandlerFunc {
 }
 
 func (p *Prometheus) registerMetrics(subsystem string) {
-	p.reqCnt = prometheus.MustRegisterOrGet(prometheus.NewCounterVec(
+	p.reqCnt = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Subsystem: subsystem,
 			Name:      "requests_total",
 			Help:      "How many HTTP requests processed, partitioned by status code and HTTP method.",
 		},
 		[]string{"code", "method", "handler"},
-	)).(*prometheus.CounterVec)
+	)
+	prometheus.MustRegister(p.reqCnt)
 
-	p.reqDur = prometheus.MustRegisterOrGet(prometheus.NewSummary(
+	p.reqDur = prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Subsystem: subsystem,
 			Name:      "request_duration_seconds",
 			Help:      "The HTTP request latencies in seconds.",
 		},
-	)).(prometheus.Summary)
+	)
+	prometheus.MustRegister(p.reqDur)
 
-	p.reqSz = prometheus.MustRegisterOrGet(prometheus.NewSummary(
+	p.reqSz = prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Subsystem: subsystem,
 			Name:      "request_size_bytes",
 			Help:      "The HTTP request sizes in bytes.",
 		},
-	)).(prometheus.Summary)
+	)
+	prometheus.MustRegister(p.reqSz)
 
-	p.resSz = prometheus.MustRegisterOrGet(prometheus.NewSummary(
+	p.resSz = prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Subsystem: subsystem,
 			Name:      "response_size_bytes",
 			Help:      "The HTTP response sizes in bytes.",
 		},
-	)).(prometheus.Summary)
+	)
+	prometheus.MustRegister(p.resSz)
 }
 
 func (p *Prometheus) Use(e *gin.Engine) {
